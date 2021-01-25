@@ -37,7 +37,170 @@ import Data.Hashable
 import Test.QuickCheck
 
 -- | Types that behave like graphs
---
+-- The most general 'DirectedPseudoGraph', which admits multiple vertices between vertexes and is
+-- always directed.
+class DirectedPseudoGraph g where
+    -- * Creation, querying and manipulation
+    -- ** Minimal ones
+    empty :: (Eq v, Eq e) => g v e
+    vertices :: g v e -> [v] -- ^ Retrieve all the vertices of a graph
+    edges :: g v e -> [(v, v, e)] -- ^ Retrieve all the edges of a graph
+
+    -- | Insert a vertex into a graph. If the graph already contains the vertex
+    -- leave it untouched
+    insertVertex :: (Eq v) => v -> g v e -> g v e
+
+    -- | Insert an edge into a graph. The involved vertices are inserted if
+    -- don't exist.
+    insertEdge :: (Eq v, Eq e) => (v, v, e) -> g v e -> g v e
+
+    -- ** Optimizable
+    containsVertex :: (Eq v) => g v e -> v -> Bool
+    containsVertex g v = (elem v) $ vertices g
+
+    -- | Tell if an edge exists in the graph
+    containsEdge :: (Eq v, Eq e) => g v e -> (v, v, e) -> Bool
+    containsEdge g eTriple = (elem eTriple) $ edges g
+
+    -- | Get all incoming edges of a vertex
+    incomingEdges :: (Eq v) => g v e -> v -> [(v, v, e)]
+    incomingEdges g v = filter (\(_, t, _) -> t == v) $ edges g
+
+    -- | Get all incoming edges of a vertex
+    outgoingEdges :: (Eq v) => g v e -> v -> [(v, v, e)]
+    outgoingEdges g v = filter (\(s, _, _) -> s == v) $ edges g
+
+    -- | Get the edge between to vertices if it exists
+    getEdge :: (Eq v) => g v e -> v -> v -> Maybe (v, v, e)
+    getEdge 
+
+    -- * Convenience for creation, querying and manipulation
+    edgePairs :: (Eq v) => g v e -> [(v, v)]
+    edgePairs g = tripleToPair <$> edgeTriples g
+    -- | Retrieve the order og a graph
+    --
+    -- The @order@ of a graph is its number of vertices
+    order :: g v e -> Int
+    order = length . vertices
+    -- | Retrieve the size of a graph
+    --
+    -- The @size@ of a graph is its number of edges
+    size :: (Eq v) => g v e -> Int
+    size = length . edges
+
+    -- | Density of a graph
+    --
+    -- The @density@ of a graph is the ratio of the number of existing edges to
+    -- the number of posible edges
+    density :: (Eq v) => g v e -> Double
+    density g = (2 * (e - n + 1)) / (n * (n - 3) + 2)
+        where
+            n = fromIntegral $ order g
+            e = fromIntegral $ size g
+
+
+    -- * Operations
+    -- | Tell if two vertices are adjacent
+    areAdjacent :: (Eq v) => g v e -> v -> v -> Bool
+    areAdjacent g v1 v2 = [] != filter (\(s, t, _) -> s == v1 && t == v2) $ edges g
+
+    -- | Total number of incoming edges of a vertex
+    vertexIndegree :: (Eq v) => g v e -> v -> Int
+    vertexIndegree = length . incomingEdges
+
+    -- | Total number of outgoing edges of a vertex
+    vertexOutdegree :: (Eq v) => g v e -> v -> Int
+    vertexOutdegree = length . outgoingEdges
+
+    -- | Degrees of a all the vertices in a graph
+    vertexIndegrees :: (Eq v) => g v e -> [Int]
+    degrees g = vertexIndegree g <$> vertices g
+
+    -- | Insert many vertices into a graph. New vertices are inserted and
+    -- already contained vertices are left untouched
+    insertVertices :: (Eq v) => [v] -> g v e -> g v e
+    insertVertices vs g = foldl' (flip insertVertex) g vs
+
+
+
+    -- | Same as 'insertEdgeTriple' but for multiple edges
+    insertEdgeTriples :: (Eq v) => [(v, v, e)] -> g v e -> g v e
+    insertEdgeTriples es g = foldl' (flip insertEdgeTriple) g es
+
+    -- | Same as 'insertEdgeTriple' but insert edge pairs in graphs with
+    -- attribute less edges
+    insertEdgePair :: (Eq v) => (v, v) -> g v () -> g v ()
+    insertEdgePair (v1, v2) = insertEdgeTriple (v1, v2, ())
+
+    -- | Same as 'insertEdgePair' for multiple edges
+    insertEdgePairs :: (Eq v) => [(v, v)] -> g v () -> g v ()
+    insertEdgePairs es g = foldl' (flip insertEdgePair) g es
+
+
+    -- | Same as 'removeVertex' but for multiple vertices
+    removeVertices :: (Eq v) => [v] -> g v e -> g v e
+    removeVertices vs g = foldl' (flip removeVertex) g vs
+
+    -- | Remove an edge from a graph if present. The involved vertices are left
+    -- untouched
+    removeEdgePair :: (Eq v) => (v, v) -> g v e -> g v e
+
+    -- | Same as 'removeEdgePair' but for multiple edges
+    removeEdgePairs :: (Eq v) => [(v, v)] -> g v e -> g v e
+    removeEdgePairs es g = foldl' (flip removeEdgePair) g es
+
+    -- | Remove the edge from a graph if present. The involved vertices also get
+    -- removed
+    removeEdgePairAndVertices :: (Eq v) => (v, v) -> g v e -> g v e
+    removeEdgePairAndVertices (v1, v2) g =
+        removeVertex v2 $ removeVertex v1 $ removeEdgePair (v1, v2) g
+
+    -- | Retrieve the isolated vertices of a graph, if any
+    isolatedVertices :: (Eq v) => g v e -> [v]
+    isolatedVertices g = filter (\v -> vertexDegree g v == 0) $ vertices g
+
+    -- | Tell if a graph is simple
+    --
+    -- A graph is @simple@ if it has no loops
+    isSimple :: (Eq v) => g v e -> Bool
+
+
+    -- * Binary operations
+
+    -- | Union of two graphs
+    union :: (Eq v) => g v e -> g v e -> g v e
+
+    -- | Intersection of two graphs
+    intersection :: (Eq v, Eq e) => g v e -> g v e -> g v e
+
+
+    -- * Transformations
+
+    -- | Convert a graph to an adjacency list with vertices in type /v/ and edge
+    -- attributes in /e/
+    toList :: (Eq v) => g v e -> [(v, [(v, e)])]
+
+    -- | Construct a graph from an adjacency list with vertices in type /v and
+    -- edge attributes in /e/
+    fromList :: (Eq v) => [(v, [(v, e)])] -> g v e
+    fromList links = go links empty
+        where
+            go [] g = g
+            go ((v, es):rest) g = go
+                rest $
+                foldr
+                    (\(v', e) g' -> insertEdgeTriple (v, v', e) g')
+                    (insertVertex v g)
+                    es
+
+    -- TODO: make this [[Bool]]
+    -- | Get the adjacency binary matrix representation of a graph
+    -- toAdjacencyMatrix :: g v e -> [[Int]]
+
+    -- | Generate a graph of Int vertices from an adjacency square binary matrix
+    fromAdjacencyMatrix :: [[Int]] -> Maybe (g Int ())
+
+
 -- The main 'Graph' instances are 'UGraph' and 'DGraph'. The functions in this
 -- class should be used for algorithms that are graph-directionality agnostic,
 -- otherwise use the more specific ones in 'UGraph' and 'DGraph'
